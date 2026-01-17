@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Irrigation Scheduler</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        const Icon = ({d, size=24}) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d={d}/>
+            </svg>
+        );
+        
+        const storage = {
+            get: (key) => {
+                const item = localStorage.getItem(key);
+                return item ? { value: item } : null;
+            },
+            set: (key, value) => {
+                localStorage.setItem(key, value);
+                return { key, value };
+            },
+            delete: (key) => {
+                localStorage.removeItem(key);
+                return { key, deleted: true };
+            }
+        };
+        
+        function IrrigationScheduler() {
+            const [pivots, setPivots] = useState([]);
+            const [activeSystems, setActiveSystems] = useState([]);
+            const [completedHistory, setCompletedHistory] = useState([]);
+            const [showAddForm, setShowAddForm] = useState(false);
+            const [editingPivot, setEditingPivot] = useState(null);
+            const [currentTime, setCurrentTime] = useState(new Date());
+            const [showHistory, setShowHistory] = useState(false);
+            const [alertsEnabled, setAlertsEnabled] = useState(true);
+            const [startingPivot, setStartingPivot] = useState(null);
+            const [notifiedSystems, setNotifiedSystems] = useState(new Set());
+            const [formData, setFormData] = useState({name: '', coverage: '', baseRuntime: '', baseDepth: ''});
+            const [startFormData, setStartFormData] = useState({desiredDepth: ''});
+
+            useEffect(() => {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+            }, []);
+
+            useEffect(() => {
+                const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+                return () => clearInterval(timer);
+            }, []);
+
+            useEffect(() => {
+                activeSystems.forEach(system => {
+                    const endTime = new Date(system.endTime);
+                    if (endTime <= currentTime && !notifiedSystems.has(system.id) && !system.paused) {
+                        setNotifiedSystems(prev => new Set([...prev, system.id]));
+                        if (alertsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+                            new Notification('Irrigation Complete', {
+                                body: `${system.name} has finished irrigating (${system.appliedDepth}" applied)`
+                            });
+                        }
+                    }
+                });
+            }, [currentTime, activeSystems, alertsEnabled, notifiedSystems]);
+
+            useEffect(() => {
+                const loadData = () => {
+                    try {
+                        const p = storage.get('irrigation-pivots');
+                        const a = storage.get('irrigation-active');
+                        const h = storage.get('irrigation-history');
+                        if (p?.value) setPivots(JSON.parse(p.value));
+                        if (a?.value) setActiveSystems(JSON.parse(a.value));
+                        if (h?.value) setCompletedHistory(JSON.parse(h.value));
+                    } catch (e) { console.log('No data'); }
+                };
+                loadData();
+                const interval = setInterval(loadData, 5000);
+                return () => clearInterval(interval);
+            }, []);
+
+            const savePivots = (newPivots) => {
+                setPivots(newPivots);
+                storage.set('irrigation-pivots', JSON.stringify(newPivots));
+            };
+
+            const saveActiveSystems = (newActive) => {
+                setActiveSystems(newActive);
+                storage.set('irrigation-active', JSON.stringify(newActive));
+            };
+
+            const saveHistory = (newHistory) => {
+                setCompletedHistory(newHistory);
+                storage.set('irrigation-history', JSON.stringify(newHistory));
+            };
+
+            const handleSavePivot = () => {
+                if (!formData.name || !formData.coverage || !formData.baseRuntime || !formData.baseDepth) {
+                    alert('Please fill in all fields');
+                    return;
+                }
+                const newPivot = {
+                    id: editingPivot?.id || Date.now(),
+                    name: formData.name,
+                    coverage: parseFloat(formData.coverage),
+                    baseRuntime: parseFloat(formData.baseRuntime),
+                    baseDepth: parseFloat(formData.baseDepth)
+                };
+                if (editingPivot) {
+                    savePivots(pivots.map(p => p.id === editingPivot.id ? newPivot : p));
+                } else {
+                    savePivots([...pivots, newPivot]);
+                }
+                setFormData({name: '', coverage: '', baseRuntime: '', baseDepth: ''});
+                setShowAddForm(false);
+                setEditingPivot(null);
+            };
+
+            const calculateIrrigation = (pivot, desiredDepth) => {
+                const speedPercent = (pivot.baseDepth / desiredDepth) * 100;
+                const actualRuntime = (desiredDepth / pivot.baseDepth) * pivot.baseRuntime;
+                const adjustedRuntime = (pivot.coverage / 100) * actualRuntime;
+                return {speedPercent: Math.round(speedPercent), actualRuntime: adjustedRuntime};
+            };
+
+            const handleStartSystem = () => {
+                if (!startFormData.desiredDepth) {
+                    alert('Please enter desired water depth');
+                    return;
+                }
+                const desiredDepth = parseFloat(startFormData.desiredDepth);
+                const calc = calculateIrrigation(startingPivot, desiredDepth);
+                const startTime = new Date();
+                const endTime = new Date(startTime.getTime() + calc.actualRuntime * 60 * 60 * 1000);
+                const newActive = {
+                    ...startingPivot,
+                    startTime: startTime.toISOString(),
+                    endTime: endTime.toISOString(),
+                    appliedDepth: desiredDepth,
+                    speedPercent: calc.speedPercent,
+                    actualRuntime: calc.actualRuntime
+                };
+                saveActiveSystems([...activeSystems, newActive]);
+                setStartingPivot(null);
+                setStartFormData({desiredDepth: ''});
+            };
+
+            const pauseSystem = (system) => {
+                const now = new Date();
+                const endTime = new Date(system.endTime);
+                const remainingMs = endTime - now;
+                const updatedSystem = {...system, paused: true, pausedAt: now.toISOString(), remainingMs};
+                saveActiveSystems(activeSystems.map(s => s.id === system.id ? updatedSystem : s));
+            };
+
+            const resumeSystem = (system) => {
+                const now = new Date();
+                const newEndTime = new Date(now.getTime() + system.remainingMs);
+                const updatedSystem = {...system, paused: false, pausedAt: null, endTime: newEndTime.toISOString()};
+                delete updatedSystem.remainingMs;
+                saveActiveSystems(activeSystems.map(s => s.id === system.id ? updatedSystem : s));
+            };
+
+            const stopSystem = (system) => {
+                const historyEntry = {
+                    ...system,
+                    completedAt: new Date().toISOString(),
+                    completed: isComplete(system.endTime) && !system.paused
+                };
+                saveHistory([historyEntry, ...completedHistory]);
+                saveActiveSystems(activeSystems.filter(s => s.id !== system.id));
+                setNotifiedSystems(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(system.id);
+                    return newSet;
+                });
+            };
+
+            const markAsComplete = (system) => {
+                if (confirm(`Mark ${system.name} as completed?`)) {
+                    const historyEntry = {
+                        ...system,
+                        completedAt: new Date().toISOString(),
+                        completed: true,
+                        manuallyCompleted: true
+                    };
+                    saveHistory([historyEntry, ...completedHistory]);
+                    saveActiveSystems(activeSystems.filter(s => s.id !== system.id));
+                    setNotifiedSystems(prev => {
+                        const newSet = new Set(prev);
+                        newSet.delete(system.id);
+                        return newSet;
+                    });
+                }
+            };
+
+            const deletePivot = (id) => {
+                savePivots(pivots.filter(p => p.id !== id));
+                saveActiveSystems(activeSystems.filter(s => s.id !== id));
+            };
+
+            const editPivot = (pivot) => {
+                setEditingPivot(pivot);
+                setFormData({
+                    name: pivot.name,
+                    coverage: pivot.coverage.toString(),
+                    baseRuntime: pivot.baseRuntime.toString(),
+                    baseDepth: pivot.baseDepth.toString()
+                });
+                setShowAddForm(true);
+            };
+
+            const formatTime = (date) => new Date(date).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: true});
+            const formatDate = (date) => new Date(date).toLocaleDateString('en-US', {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+
+            const getTimeRemaining = (endTime, paused, pausedAt) => {
+                if (paused) {
+                    const pausedTime = new Date(pausedAt);
+                    const end = new Date(endTime);
+                    const diff = end - pausedTime;
+                    const hours = Math.floor(diff / (1000 * 60 * 60));
+                    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                    return `${hours}h ${minutes}m (paused)`;
+                }
+                const end = new Date(endTime);
+                const diff = end - currentTime;
+                if (diff <= 0) return 'Complete';
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                return `${hours}h ${minutes}m remaining`;
+            };
+
+            const isComplete = (endTime) => new Date(endTime) <= currentTime;
+
+            const clearHistory = () => {
+                if (confirm('Are you sure you want to clear all irrigation history?')) {
+                    setCompletedHistory([]);
+                    storage.delete('irrigation-history');
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4 pb-20">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-green-800 mb-2">Irrigation Scheduler</h1>
+                                    <p className="text-gray-600">Manage your center pivot irrigation systems</p>
+                                    <p className="text-xs text-blue-600 mt-1">🌐 Team Mode - Refresh to see updates</p>
+                                </div>
+                                <button onClick={() => setAlertsEnabled(!alertsEnabled)} className={`p-3 rounded-lg ${alertsEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
+                                    {alertsEnabled ? '🔔' : '🔕'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {activeSystems.length > 0 && (
+                            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                                <h2 className="text-xl font-bold text-gray-800 mb-4">🕐 Active Systems</h2>
+                                <div className="space-y-4">
+                                    {[...activeSystems].sort((a, b) => new Date(a.endTime) - new Date(b.endTime)).map(system => (
+                                        <div key={system.id} className={`border-l-4 ${system.paused ? 'border-yellow-500 bg-yellow-50' : isComplete(system.endTime) ? 'border-green-500 bg-green-50' : 'border-blue-500 bg-blue-50'} p-4 rounded`}>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h3 className="font-bold text-lg">{system.name}</h3>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => markAsComplete(system)} className="text-green-600 hover:text-green-800" title="Mark complete">✓</button>
+                                                    <button onClick={() => stopSystem(system)} className="text-red-600 hover:text-red-800" title="Cancel">✕</button>
+                                                </div>
+                                            </div>
+                                            <div className="text-sm space-y-1">
+                                                <p className="text-gray-700">Started: <span className="font-semibold">{formatTime(system.startTime)}</span></p>
+                                                {!system.paused && <p className="text-gray-700">Expected: <span className="font-semibold">{formatTime(system.endTime)}</span></p>}
+                                                <p className={`font-semibold text-lg ${system.paused ? 'text-yellow-700' : isComplete(system.endTime) ? 'text-green-700' : 'text-blue-700'}`}>
+                                                    {getTimeRemaining(system.endTime, system.paused, system.pausedAt)}
+                                                </p>
+                                                <div className="mt-3 pt-3 border-t border-gray-300">
+                                                    <p className="text-gray-700">Timer Speed: <span className="font-semibold">{system.speedPercent}%</span></p>
+                                                    <p className="text-gray-700">Applying: <span className="font-semibold">{system.appliedDepth}"</span></p>
+                                                    <p className="text-gray-600 text-xs">Runtime: {system.actualRuntime.toFixed(1)} hrs ({system.coverage}%)</p>
+                                                </div>
+                                                <div className="mt-3">
+                                                    {system.paused ? (
+                                                        <button onClick={() => resumeSystem(system)} className="w-full bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700">Resume</button>
+                                                    ) : (
+                                                        <button onClick={() => pauseSystem(system)} className="w-full bg-yellow-600 text-white px-3 py-2 rounded-lg hover:bg-yellow-700">Pause</button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-xl font-bold text-gray-800">Pivot Systems</h2>
+                                <button onClick={() => {setShowAddForm(!showAddForm); setEditingPivot(null); setFormData({name: '', coverage: '', baseRuntime: '', baseDepth: ''});}} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+                                    + Add Pivot
+                                </button>
+                            </div>
+
+                            {showAddForm && (
+                                <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                                    <h3 className="font-semibold mb-3">{editingPivot ? 'Edit' : 'Add'} Pivot</h3>
+                                    <div className="space-y-3">
+                                        <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-3 py-2 border rounded-lg" placeholder="Pivot Name"/>
+                                        <input type="number" value={formData.coverage} onChange={(e) => setFormData({...formData, coverage: e.target.value})} className="w-full px-3 py-2 border rounded-lg" placeholder="Coverage % (e.g., 75)"/>
+                                        <input type="number" step="0.1" value={formData.baseRuntime} onChange={(e) => setFormData({...formData, baseRuntime: e.target.value})} className="w-full px-3 py-2 border rounded-lg" placeholder="Full circle runtime at 100% (hrs)"/>
+                                        <input type="number" step="0.01" value={formData.baseDepth} onChange={(e) => setFormData({...formData, baseDepth: e.target.value})} className="w-full px-3 py-2 border rounded-lg" placeholder="Water at 100% (inches)"/>
+                                        <div className="flex gap-2">
+                                            <button onClick={handleSavePivot} className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg">Save</button>
+                                            <button onClick={() => {setShowAddForm(false); setEditingPivot(null);}} className="flex-1 bg-gray-300 px-4 py-2 rounded-lg">Cancel</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="space-y-3">
+                                {pivots.length === 0 ? (
+                                    <p className="text-gray-500 text-center py-8">No pivots yet</p>
+                                ) : (
+                                    pivots.map(pivot => {
+                                        const isRunning = activeSystems.some(s => s.id === pivot.id);
+                                        return (
+                                            <div key={pivot.id} className="border rounded-lg p-4">
+                                                <div className="flex justify-between mb-2">
+                                                    <h3 className="font-bold text-lg">{pivot.name}</h3>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => editPivot(pivot)} disabled={isRunning} className="text-blue-600">✎</button>
+                                                        <button onClick={() => deletePivot(pivot.id)} disabled={isRunning} className="text-red-600">✕</button>
+                                                    </div>
+                                                </div>
+                                                <div className="text-sm text-gray-600 mb-3">
+                                                    <p>Coverage: {pivot.coverage}%</p>
+                                                    <p>Base: {pivot.baseRuntime}hrs @ 100% = {pivot.baseDepth}"</p>
+                                                </div>
+                                                <button onClick={() => setStartingPivot(pivot)} disabled={isRunning} className={`w-full px-4 py-2 rounded-lg ${isRunning ? 'bg-gray-300 text-gray-500' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                                                    {isRunning ? 'Running' : '▶ Start'}
+                                                </button>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow-lg p-6">
+                            <div className="flex justify-between mb-4">
+                                <h2 className="text-xl font-bold">📋 History</h2>
+                                <button onClick={() => setShowHistory(!showHistory)} className="text-blue-600">{showHistory ? 'Hide' : 'Show'}</button>
+                            </div>
+                            {showHistory && (
+                                <div className="space-y-3">
+                                    {completedHistory.length === 0 ? (
+                                        <p className="text-gray-500 text-center py-4">No history</p>
+                                    ) : (
+                                        <>
+                                            <button onClick={clearHistory} className="text-sm text-red-600 mb-2">Clear All</button>
+                                            {completedHistory.slice(0, 20).map((entry, idx) => (
+                                                <div key={idx} className="border-l-4 border-gray-300 bg-gray-50 p-3 rounded text-sm">
+                                                    <div className="flex justify-between mb-1">
+                                                        <h4 className="font-semibold">{entry.name}</h4>
+                                                        <span className="text-xs text-gray-500">{formatDate(entry.completedAt)}</span>
+                                                    </div>
+                                                    <p>Applied: {entry.appliedDepth}" at {entry.speedPercent}%</p>
+                                                    <p className={entry.manuallyCompleted ? 'text-blue-600' : entry.completed ? 'text-green-600' : 'text-orange-600'}>
+                                                        {entry.manuallyCompleted ? '✓ Manually completed' : entry.completed ? '✓ Completed' : '⚠ Stopped early'}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {startingPivot && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                                <h3 className="text-xl font-bold mb-4">Start {startingPivot.name}</h3>
+                                <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4 text-sm">
+                                    <p>Base: {startingPivot.baseRuntime}hrs @ 100% = {startingPivot.baseDepth}"</p>
+                                    <p>Coverage: {startingPivot.coverage}%</p>
+                                </div>
+                                <input type="number" step="0.01" value={startFormData.desiredDepth} onChange={(e) => setStartFormData({desiredDepth: e.target.value})} className="w-full px-3 py-2 border rounded-lg mb-4" placeholder="Desired water depth (inches)"/>
+                                {startFormData.desiredDepth && (
+                                    <div className="bg-green-50 border border-green-200 rounded p-3 mb-4 text-sm">
+                                        <p className="font-semibold mb-2">Calculated:</p>
+                                        {(() => {
+                                            const calc = calculateIrrigation(startingPivot, parseFloat(startFormData.desiredDepth));
+                                            return (
+                                                <>
+                                                    <p className="text-lg font-bold text-green-700">Set Timer: {calc.speedPercent}%</p>
+                                                    <p>Runtime: {calc.actualRuntime.toFixed(1)} hours</p>
+                                                </>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
+                                <div className="flex gap-2">
+                                    <button onClick={handleStartSystem} className="flex-1 bg-green-600 text-white px-4 py-3 rounded-lg">Start</button>
+                                    <button onClick={() => {setStartingPivot(null); setStartFormData({desiredDepth: ''});}} className="flex-1 bg-gray-300 px-4 py-3 rounded-lg">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<IrrigationScheduler />, document.getElementById('root'));
+    </script>
+</body>
+</html>
