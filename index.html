@@ -439,7 +439,8 @@
             );
         }
 
-        ReactDOM.render(<IrrigationScheduler />, document.getElementById('root'));
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<IrrigationScheduler />);
     </script>
 </body>
 </html>
