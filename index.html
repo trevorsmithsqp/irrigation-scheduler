@@ -11,10 +11,25 @@
 </head>
 <body>
     <div id="root"></div>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
-        const { Plus, Edit2, Trash2, CheckCircle, Bell, BellOff, ChevronDown, ChevronRight, Pause } = lucide;
+        
+        const Icon = ({ d, size = 24, fill = "none", className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {Array.isArray(d) ? d.map((path, i) => <path key={i} d={path} />) : <path d={d} />}
+            </svg>
+        );
+        
+        const Plus = (props) => <Icon d="M12 5v14M5 12h14" {...props} />;
+        const Edit2 = (props) => <Icon d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" {...props} />;
+        const Trash2 = (props) => <Icon d={["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", "M10 11v6", "M14 11v6"]} {...props} />;
+        const CheckCircle = (props) => <Icon d={["M22 11.08V12a10 10 0 1 1-5.93-9.14", "M22 4 12 14.01l-3-3"]} {...props} />;
+        const Bell = (props) => <Icon d={["M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9", "M13.73 21a2 2 0 0 1-3.46 0"]} {...props} />;
+        const BellOff = (props) => <Icon d={["M13.73 21a2 2 0 0 1-3.46 0", "M18.63 13A17.89 17.89 0 0 1 18 8", "M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14", "M18 8a6 6 0 0 0-9.33-5", "M1 1l22 22"]} {...props} />;
+        const ChevronDown = (props) => <Icon d="m6 9 6 6 6-6" {...props} />;
+        const ChevronRight = (props) => <Icon d="m9 18 6-6-6-6" {...props} />;
+        const Pause = (props) => <Icon d={["M6 4h4v16H6z", "M14 4h4v16h-4z"]} {...props} />;
         
         const storage = {
             get: (key) => {
@@ -29,7 +44,9 @@
                 localStorage.removeItem(key);
                 return { key, deleted: true };
             }
-        };function IrrigationScheduler() {
+        };
+        
+        function IrrigationScheduler() {
             const [pivots, setPivots] = useState([]);
             const [activeSystems, setActiveSystems] = useState([]);
             const [completedHistory, setCompletedHistory] = useState([]);
@@ -44,15 +61,7 @@
             const [expandedSystem, setExpandedSystem] = useState(null);
             const [showNewFarmInput, setShowNewFarmInput] = useState(false);
             const [newFarmName, setNewFarmName] = useState('');
-            
-            const [formData, setFormData] = useState({
-                name: '',
-                farm: '',
-                coverage: '',
-                baseRuntime: '',
-                baseDepth: ''
-            });
-
+            const [formData, setFormData] = useState({name: '', farm: '', coverage: '', baseRuntime: '', baseDepth: ''});
             const [quickStartDepth, setQuickStartDepth] = useState('');
 
             useEffect(() => {
@@ -72,9 +81,7 @@
                     if (endTime <= currentTime && !notifiedSystems.has(system.id) && !system.paused) {
                         setNotifiedSystems(prev => new Set([...prev, system.id]));
                         if (alertsEnabled && 'Notification' in window && Notification.permission === 'granted') {
-                            new Notification('Irrigation Complete', {
-                                body: `${system.name} has finished irrigating (${system.appliedDepth}" applied)`
-                            });
+                            new Notification('Irrigation Complete', {body: `${system.name} has finished irrigating (${system.appliedDepth}" applied)`});
                         }
                     }
                 });
@@ -96,20 +103,9 @@
                 return () => clearInterval(interval);
             }, []);
 
-            const savePivots = (newPivots) => {
-                setPivots(newPivots);
-                storage.set('irrigation-pivots', JSON.stringify(newPivots));
-            };
-
-            const saveActiveSystems = (newActive) => {
-                setActiveSystems(newActive);
-                storage.set('irrigation-active', JSON.stringify(newActive));
-            };
-
-            const saveHistory = (newHistory) => {
-                setCompletedHistory(newHistory);
-                storage.set('irrigation-history', JSON.stringify(newHistory));
-            };
+            const savePivots = (newPivots) => { setPivots(newPivots); storage.set('irrigation-pivots', JSON.stringify(newPivots)); };
+            const saveActiveSystems = (newActive) => { setActiveSystems(newActive); storage.set('irrigation-active', JSON.stringify(newActive)); };
+            const saveHistory = (newHistory) => { setCompletedHistory(newHistory); storage.set('irrigation-history', JSON.stringify(newHistory)); };
 
             const handleSavePivot = () => {
                 const farmName = showNewFarmInput ? newFarmName : formData.farm;
@@ -117,20 +113,9 @@
                     alert('Please fill in all fields');
                     return;
                 }
-                const newPivot = {
-                    id: editingPivot?.id || Date.now(),
-                    name: formData.name,
-                    farm: farmName,
-                    coverage: parseFloat(formData.coverage),
-                    baseRuntime: parseFloat(formData.baseRuntime),
-                    baseDepth: parseFloat(formData.baseDepth)
-                };
-                if (editingPivot) {
-                    savePivots(pivots.map(p => p.id === editingPivot.id ? newPivot : p));
-                } else {
-                    savePivots([...pivots, newPivot]);
-                }
-                setFormData({ name: '', farm: '', coverage: '', baseRuntime: '', baseDepth: '' });
+                const newPivot = {id: editingPivot?.id || Date.now(), name: formData.name, farm: farmName, coverage: parseFloat(formData.coverage), baseRuntime: parseFloat(formData.baseRuntime), baseDepth: parseFloat(formData.baseDepth)};
+                if (editingPivot) { savePivots(pivots.map(p => p.id === editingPivot.id ? newPivot : p)); } else { savePivots([...pivots, newPivot]); }
+                setFormData({name: '', farm: '', coverage: '', baseRuntime: '', baseDepth: ''});
                 setShowAddForm(false);
                 setEditingPivot(null);
                 setShowNewFarmInput(false);
@@ -141,26 +126,16 @@
                 const speedPercent = (pivot.baseDepth / desiredDepth) * 100;
                 const actualRuntime = (desiredDepth / pivot.baseDepth) * pivot.baseRuntime;
                 const adjustedRuntime = (pivot.coverage / 100) * actualRuntime;
-                return { speedPercent: Math.round(speedPercent), actualRuntime: adjustedRuntime };
+                return {speedPercent: Math.round(speedPercent), actualRuntime: adjustedRuntime};
             };
 
             const handleQuickStart = (pivot) => {
-                if (!quickStartDepth) {
-                    alert('Please enter water depth');
-                    return;
-                }
+                if (!quickStartDepth) { alert('Please enter water depth'); return; }
                 const desiredDepth = parseFloat(quickStartDepth);
                 const calc = calculateIrrigation(pivot, desiredDepth);
                 const startTime = new Date();
                 const endTime = new Date(startTime.getTime() + calc.actualRuntime * 60 * 60 * 1000);
-                const newActive = {
-                    ...pivot,
-                    startTime: startTime.toISOString(),
-                    endTime: endTime.toISOString(),
-                    appliedDepth: desiredDepth,
-                    speedPercent: calc.speedPercent,
-                    actualRuntime: calc.actualRuntime
-                };
+                const newActive = {...pivot, startTime: startTime.toISOString(), endTime: endTime.toISOString(), appliedDepth: desiredDepth, speedPercent: calc.speedPercent, actualRuntime: calc.actualRuntime};
                 saveActiveSystems([...activeSystems, newActive]);
                 setQuickStartPivot(null);
                 setQuickStartDepth('');
@@ -170,65 +145,37 @@
                 const now = new Date();
                 const endTime = new Date(system.endTime);
                 const remainingMs = endTime - now;
-                const updatedSystem = { ...system, paused: true, pausedAt: now.toISOString(), remainingMs };
+                const updatedSystem = {...system, paused: true, pausedAt: now.toISOString(), remainingMs};
                 saveActiveSystems(activeSystems.map(s => s.id === system.id ? updatedSystem : s));
             };
 
             const resumeSystem = (system) => {
                 const now = new Date();
                 const newEndTime = new Date(now.getTime() + system.remainingMs);
-                const updatedSystem = { ...system, paused: false, pausedAt: null, endTime: newEndTime.toISOString() };
+                const updatedSystem = {...system, paused: false, pausedAt: null, endTime: newEndTime.toISOString()};
                 delete updatedSystem.remainingMs;
                 saveActiveSystems(activeSystems.map(s => s.id === system.id ? updatedSystem : s));
             };
 
             const stopSystem = (system) => {
-                const historyEntry = {
-                    ...system,
-                    completedAt: new Date().toISOString(),
-                    completed: isComplete(system.endTime) && !system.paused
-                };
+                const historyEntry = {...system, completedAt: new Date().toISOString(), completed: isComplete(system.endTime) && !system.paused};
                 saveHistory([historyEntry, ...completedHistory]);
                 saveActiveSystems(activeSystems.filter(s => s.id !== system.id));
-                setNotifiedSystems(prev => {
-                    const newSet = new Set(prev);
-                    newSet.delete(system.id);
-                    return newSet;
-                });
+                setNotifiedSystems(prev => { const newSet = new Set(prev); newSet.delete(system.id); return newSet; });
             };
 
             const markAsComplete = (system) => {
-                const historyEntry = {
-                    ...system,
-                    completedAt: new Date().toISOString(),
-                    completed: true,
-                    manuallyCompleted: true
-                };
+                const historyEntry = {...system, completedAt: new Date().toISOString(), completed: true, manuallyCompleted: true};
                 saveHistory([historyEntry, ...completedHistory]);
                 saveActiveSystems(activeSystems.filter(s => s.id !== system.id));
-                setNotifiedSystems(prev => {
-                    const newSet = new Set(prev);
-                    newSet.delete(system.id);
-                    return newSet;
-                });
+                setNotifiedSystems(prev => { const newSet = new Set(prev); newSet.delete(system.id); return newSet; });
             };
 
-            const deletePivot = (id) => {
-                if (confirm('Delete this pivot?')) {
-                    savePivots(pivots.filter(p => p.id !== id));
-                    saveActiveSystems(activeSystems.filter(s => s.id !== id));
-                }
-            };
+            const deletePivot = (id) => { if (confirm('Delete this pivot?')) { savePivots(pivots.filter(p => p.id !== id)); saveActiveSystems(activeSystems.filter(s => s.id !== id)); } };
 
             const editPivot = (pivot) => {
                 setEditingPivot(pivot);
-                setFormData({
-                    name: pivot.name,
-                    farm: pivot.farm || '',
-                    coverage: pivot.coverage.toString(),
-                    baseRuntime: pivot.baseRuntime.toString(),
-                    baseDepth: pivot.baseDepth.toString()
-                });
+                setFormData({name: pivot.name, farm: pivot.farm || '', coverage: pivot.coverage.toString(), baseRuntime: pivot.baseRuntime.toString(), baseDepth: pivot.baseDepth.toString()});
                 setShowNewFarmInput(false);
                 setNewFarmName('');
                 setShowAddForm(true);
@@ -236,55 +183,34 @@
 
             const handleFarmChange = (e) => {
                 const value = e.target.value;
-                if (value === '__new__') {
-                    setShowNewFarmInput(true);
-                    setFormData({ ...formData, farm: '' });
-                    setNewFarmName('');
-                } else {
-                    setShowNewFarmInput(false);
-                    setNewFarmName('');
-                    setFormData({ ...formData, farm: value });
-                }
+                if (value === '__new__') { setShowNewFarmInput(true); setFormData({...formData, farm: ''}); setNewFarmName(''); }
+                else { setShowNewFarmInput(false); setNewFarmName(''); setFormData({...formData, farm: value}); }
             };
 
-            const handleCancelNewFarm = () => {
-                setShowNewFarmInput(false);
-                setNewFarmName('');
-                setFormData({ ...formData, farm: '' });
-            };
-
-            const formatTime = (date) => new Date(date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-            const formatDate = (date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            const handleCancelNewFarm = () => { setShowNewFarmInput(false); setNewFarmName(''); setFormData({...formData, farm: ''}); };
+            const formatTime = (date) => new Date(date).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: true});
+            const formatDate = (date) => new Date(date).toLocaleDateString('en-US', {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
 
             const getTimeRemaining = (endTime, paused, pausedAt) => {
                 if (paused) {
                     const pausedTime = new Date(pausedAt);
                     const end = new Date(endTime);
                     const diff = end - pausedTime;
-                    const hours = Math.floor(diff / (1000 * 60 * 60));
-                    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                    const hours = Math.floor(diff / 36e5);
+                    const minutes = Math.floor((diff % 36e5) / 6e4);
                     return `${hours}h ${minutes}m`;
                 }
                 const end = new Date(endTime);
                 const diff = end - currentTime;
                 if (diff <= 0) return 'Complete';
-                const hours = Math.floor(diff / (1000 * 60 * 60));
-                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const hours = Math.floor(diff / 36e5);
+                const minutes = Math.floor((diff % 36e5) / 6e4);
                 return `${hours}h ${minutes}m`;
             };
 
             const isComplete = (endTime) => new Date(endTime) <= currentTime;
-
-            const clearHistory = () => {
-                if (confirm('Clear all history?')) {
-                    setCompletedHistory([]);
-                    storage.delete('irrigation-history');
-                }
-            };
-
-            const toggleFarm = (farm) => {
-                setExpandedFarms(prev => ({ ...prev, [farm]: !prev[farm] }));
-            };
+            const clearHistory = () => { if (confirm('Clear all history?')) { setCompletedHistory([]); storage.delete('irrigation-history'); } };
+            const toggleFarm = (farm) => { setExpandedFarms(prev => ({...prev, [farm]: !prev[farm]})); };
 
             const groupedPivots = pivots.reduce((acc, pivot) => {
                 const farm = pivot.farm || 'Uncategorized';
@@ -293,38 +219,24 @@
                 return acc;
             }, {});
             const sortedFarms = Object.keys(groupedPivots).sort();
-            
-            const existingFarms = useMemo(() => {
-                return [...new Set(pivots.map(p => p.farm).filter(Boolean))].sort();
-            }, [pivots]);
-
+            const existingFarms = useMemo(() => [...new Set(pivots.map(p => p.farm).filter(Boolean))].sort(), [pivots]);
             const runningCount = activeSystems.length;
-            const completingSoon = activeSystems.filter(s => {
-                const diff = new Date(s.endTime) - currentTime;
-                return diff > 0 && diff < 3600000 && !s.paused;
-            }).length;return (
+            const completingSoon = activeSystems.filter(s => { const diff = new Date(s.endTime) - currentTime; return diff > 0 && diff < 36e5 && !s.paused; }).length;
+
+            return (
                 <div className="min-h-screen bg-gray-50">
                     <div className="bg-white shadow-sm sticky top-0 z-10">
                         <div className="max-w-6xl mx-auto px-4 py-4">
                             <div className="flex justify-between items-center mb-4">
-                                <div>
-                                    <h1 className="text-2xl font-bold text-green-800">Irrigation Scheduler</h1>
-                                    <p className="text-sm text-gray-600">🌐 Team Mode</p>
-                                </div>
+                                <div><h1 className="text-2xl font-bold text-green-800">Irrigation Scheduler</h1><p className="text-sm text-gray-600">Team Mode</p></div>
                                 <button onClick={() => setAlertsEnabled(!alertsEnabled)} className={`p-2 rounded-lg ${alertsEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
                                     {alertsEnabled ? <Bell size={20} /> : <BellOff size={20} />}
                                 </button>
                             </div>
                             {runningCount > 0 && (
                                 <div className="flex gap-4 text-sm mb-4">
-                                    <div className="bg-blue-50 px-3 py-2 rounded-lg">
-                                        <span className="font-semibold text-blue-700">{runningCount}</span> <span className="text-blue-600">running</span>
-                                    </div>
-                                    {completingSoon > 0 && (
-                                        <div className="bg-orange-50 px-3 py-2 rounded-lg">
-                                            <span className="font-semibold text-orange-700">{completingSoon}</span> <span className="text-orange-600">completing soon</span>
-                                        </div>
-                                    )}
+                                    <div className="bg-blue-50 px-3 py-2 rounded-lg"><span className="font-semibold text-blue-700">{runningCount}</span> <span className="text-blue-600">running</span></div>
+                                    {completingSoon > 0 && <div className="bg-orange-50 px-3 py-2 rounded-lg"><span className="font-semibold text-orange-700">{completingSoon}</span> <span className="text-orange-600">completing soon</span></div>}
                                 </div>
                             )}
                             <div className="flex gap-1 border-b border-gray-200">
@@ -359,14 +271,14 @@
                                                     </select>
                                                 )}
                                             </div>
-                                            <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="px-3 py-2 border rounded-lg text-sm col-span-2" placeholder="Pivot Name" />
-                                            <input type="number" value={formData.coverage} onChange={(e) => setFormData({ ...formData, coverage: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" placeholder="Circle %" />
-                                            <input type="number" step="0.1" value={formData.baseRuntime} onChange={(e) => setFormData({ ...formData, baseRuntime: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" placeholder="Runtime (hrs) @ 100%" />
-                                            <input type="number" step="0.01" value={formData.baseDepth} onChange={(e) => setFormData({ ...formData, baseDepth: e.target.value })} className="px-3 py-2 border rounded-lg text-sm col-span-2" placeholder="Water depth (inches) @ 100%" />
+                                            <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="px-3 py-2 border rounded-lg text-sm col-span-2" placeholder="Pivot Name" />
+                                            <input type="number" value={formData.coverage} onChange={(e) => setFormData({...formData, coverage: e.target.value})} className="px-3 py-2 border rounded-lg text-sm" placeholder="Circle %" />
+                                            <input type="number" step="0.1" value={formData.baseRuntime} onChange={(e) => setFormData({...formData, baseRuntime: e.target.value})} className="px-3 py-2 border rounded-lg text-sm" placeholder="Runtime (hrs) @ 100%" />
+                                            <input type="number" step="0.01" value={formData.baseDepth} onChange={(e) => setFormData({...formData, baseDepth: e.target.value})} className="px-3 py-2 border rounded-lg text-sm col-span-2" placeholder="Water depth (inches) @ 100%" />
                                         </div>
                                         <div className="flex gap-2 mt-3">
                                             <button onClick={handleSavePivot} className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700">Save</button>
-                                            <button onClick={() => { setShowAddForm(false); setEditingPivot(null); setFormData({ name: '', farm: '', coverage: '', baseRuntime: '', baseDepth: '' }); setShowNewFarmInput(false); setNewFarmName(''); }} className="flex-1 bg-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-400">Cancel</button>
+                                            <button onClick={() => {setShowAddForm(false); setEditingPivot(null); setFormData({name: '', farm: '', coverage: '', baseRuntime: '', baseDepth: ''}); setShowNewFarmInput(false); setNewFarmName('');}} className="flex-1 bg-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-400">Cancel</button>
                                         </div>
                                     </div>
                                 )}
@@ -404,7 +316,7 @@
                                                                                     <input type="number" step="0.01" value={quickStartDepth} onChange={(e) => setQuickStartDepth(e.target.value)} className="w-20 px-2 py-1 border rounded text-sm" placeholder='0.4"' autoFocus />
                                                                                     {quickStartDepth && <span className="text-xs text-green-700 font-semibold">{calculateIrrigation(pivot, parseFloat(quickStartDepth)).speedPercent}%</span>}
                                                                                     <button onClick={() => handleQuickStart(pivot)} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">Go</button>
-                                                                                    <button onClick={() => { setQuickStartPivot(null); setQuickStartDepth(''); }} className="text-gray-500 hover:text-gray-700 text-sm">✕</button>
+                                                                                    <button onClick={() => {setQuickStartPivot(null); setQuickStartDepth('');}} className="text-gray-500 hover:text-gray-700 text-sm">✕</button>
                                                                                 </div>
                                                                             ) : (
                                                                                 <>
@@ -456,7 +368,7 @@
                                                         {!system.paused && !isCompletedNow && (
                                                             <div className="mt-3">
                                                                 <div className="w-full bg-gray-200 rounded-full h-2">
-                                                                    <div className="bg-blue-600 h-2 rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, Math.max(0, ((new Date() - new Date(system.startTime)) / (new Date(system.endTime) - new Date(system.startTime))) * 100))}%` }}></div>
+                                                                    <div className="bg-blue-600 h-2 rounded-full transition-all duration-1000" style={{width: `${Math.min(100, Math.max(0, ((new Date() - new Date(system.startTime)) / (new Date(system.endTime) - new Date(system.startTime))) * 100))}%`}}></div>
                                                                 </div>
                                                             </div>
                                                         )}
@@ -501,10 +413,7 @@
                                             {completedHistory.slice(0, 50).map((entry, idx) => (
                                                 <div key={idx} className="bg-white rounded-lg shadow-sm p-3">
                                                     <div className="flex justify-between items-start">
-                                                        <div>
-                                                            <h4 className="font-semibold text-gray-800">{entry.name}</h4>
-                                                            <p className="text-xs text-gray-500">{entry.farm}</p>
-                                                        </div>
+                                                        <div><h4 className="font-semibold text-gray-800">{entry.name}</h4><p className="text-xs text-gray-500">{entry.farm}</p></div>
                                                         <span className="text-xs text-gray-500">{formatDate(entry.completedAt)}</span>
                                                     </div>
                                                     <div className="text-sm text-gray-600 mt-2">
