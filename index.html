@@ -9,12 +9,39 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+
+```
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+```
+
 </head>
 <body>
     <div id="root"></div>
 
 ```
 <script type="text/babel">
+    // Firebase Configuration - REPLACE WITH YOUR OWN 
+    const firebaseConfig = {
+  apiKey: "AIzaSyDj5H4ln8YLZ1eiDwEeU5IkQnDrX82epj4",
+  authDomain: "irrigation-scheduler-caf7f.firebaseapp.com",
+  databaseURL: "https://irrigation-scheduler-caf7f-default-rtdb.firebaseio.com",
+  projectId: "irrigation-scheduler-caf7f",
+  storageBucket: "irrigation-scheduler-caf7f.firebasestorage.app",
+  messagingSenderId: "828426585317",
+  appId: "1:828426585317:web:9899f502e962b5ad94c00c"
+};
+
+    // Initialize Firebase
+    let database;
+    try {
+        firebase.initializeApp(firebaseConfig);
+        database = firebase.database();
+    } catch (error) {
+        console.error("Firebase initialization error:", error);
+    }
+
     const { useState, useEffect, useMemo } = React;
     
     const Icon = ({ d, size = 24, fill = "none", className = "" }) => (
@@ -33,32 +60,6 @@
     const ChevronRight = (props) => <Icon d="m9 18 6-6-6-6" {...props} />;
     const Pause = (props) => <Icon d={["M6 4h4v16H6z", "M14 4h4v16h-4z"]} {...props} />;
     
-    const storage = {
-        get: async (key) => {
-            try {
-                return await window.storage.get(key, true);
-            } catch (e) {
-                return null;
-            }
-        },
-        set: async (key, value) => {
-            try {
-                return await window.storage.set(key, value, true);
-            } catch (e) {
-                console.error('Storage error:', e);
-                return null;
-            }
-        },
-        delete: async (key) => {
-            try {
-                return await window.storage.delete(key, true);
-            } catch (e) {
-                console.error('Storage error:', e);
-                return null;
-            }
-        }
-    };
-    
     function IrrigationScheduler() {
         const [pivots, setPivots] = useState([]);
         const [activeSystems, setActiveSystems] = useState([]);
@@ -76,6 +77,57 @@
         const [newFarmName, setNewFarmName] = useState('');
         const [formData, setFormData] = useState({name: '', farm: '', coverage: '', baseRuntime: '', baseDepth: ''});
         const [quickStartDepth, setQuickStartDepth] = useState('');
+        const [firebaseReady, setFirebaseReady] = useState(false);
+
+        // Initialize Firebase listeners
+        useEffect(() => {
+            if (!database) {
+                console.error("Firebase not initialized");
+                return;
+            }
+
+            setFirebaseReady(true);
+
+            // Listen for pivots changes
+            const pivotsRef = database.ref('pivots');
+            pivotsRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    setPivots(Object.values(data));
+                } else {
+                    setPivots([]);
+                }
+            });
+
+            // Listen for active systems changes
+            const activeRef = database.ref('activeSystems');
+            activeRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    setActiveSystems(Object.values(data));
+                } else {
+                    setActiveSystems([]);
+                }
+            });
+
+            // Listen for history changes
+            const historyRef = database.ref('history');
+            historyRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    setCompletedHistory(Object.values(data));
+                } else {
+                    setCompletedHistory([]);
+                }
+            });
+
+            // Cleanup listeners on unmount
+            return () => {
+                pivotsRef.off();
+                activeRef.off();
+                historyRef.off();
+            };
+        }, []);
 
         useEffect(() => {
             if ('Notification' in window && Notification.permission === 'default') {
@@ -100,33 +152,31 @@
             });
         }, [currentTime, activeSystems, alertsEnabled, notifiedSystems]);
 
-        useEffect(() => {
-            const loadData = async () => {
-                try {
-                    const p = await storage.get('irrigation-pivots');
-                    const a = await storage.get('irrigation-active');
-                    const h = await storage.get('irrigation-history');
-                    if (p?.value) setPivots(JSON.parse(p.value));
-                    if (a?.value) setActiveSystems(JSON.parse(a.value));
-                    if (h?.value) setCompletedHistory(JSON.parse(h.value));
-                } catch (e) { console.log('Error loading data:', e); }
-            };
-            loadData();
-            const interval = setInterval(loadData, 5000);
-            return () => clearInterval(interval);
-        }, []);
+        const savePivots = async (newPivots) => {
+            if (!database) return;
+            const pivotsObj = {};
+            newPivots.forEach(pivot => {
+                pivotsObj[pivot.id] = pivot;
+            });
+            await database.ref('pivots').set(pivotsObj);
+        };
 
-        const savePivots = async (newPivots) => { 
-            setPivots(newPivots); 
-            await storage.set('irrigation-pivots', JSON.stringify(newPivots)); 
+        const saveActiveSystems = async (newActive) => {
+            if (!database) return;
+            const activeObj = {};
+            newActive.forEach(system => {
+                activeObj[system.id] = system;
+            });
+            await database.ref('activeSystems').set(activeObj);
         };
-        const saveActiveSystems = async (newActive) => { 
-            setActiveSystems(newActive); 
-            await storage.set('irrigation-active', JSON.stringify(newActive)); 
-        };
-        const saveHistory = async (newHistory) => { 
-            setCompletedHistory(newHistory); 
-            await storage.set('irrigation-history', JSON.stringify(newHistory)); 
+
+        const saveHistory = async (newHistory) => {
+            if (!database) return;
+            const historyObj = {};
+            newHistory.forEach((entry, idx) => {
+                historyObj[`entry_${Date.now()}_${idx}`] = entry;
+            });
+            await database.ref('history').set(historyObj);
         };
 
         const handleSavePivot = async () => {
@@ -242,8 +292,7 @@
         const isComplete = (endTime) => new Date(endTime) <= currentTime;
         const clearHistory = async () => { 
             if (confirm('Clear all history?')) { 
-                setCompletedHistory([]); 
-                await storage.delete('irrigation-history'); 
+                await database.ref('history').set(null);
             } 
         };
         const toggleFarm = (farm) => { setExpandedFarms(prev => ({...prev, [farm]: !prev[farm]})); };
@@ -259,12 +308,23 @@
         const runningCount = activeSystems.length;
         const completingSoon = activeSystems.filter(s => { const diff = new Date(s.endTime) - currentTime; return diff > 0 && diff < 36e5 && !s.paused; }).length;
 
+        if (!firebaseReady) {
+            return (
+                <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                    <div className="text-center">
+                        <h2 className="text-2xl font-bold text-gray-800 mb-2">Connecting to Firebase...</h2>
+                        <p className="text-gray-600">Please check your Firebase configuration</p>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="min-h-screen bg-gray-50">
                 <div className="bg-white shadow-sm sticky top-0 z-10">
                     <div className="max-w-6xl mx-auto px-4 py-4">
                         <div className="flex justify-between items-center mb-4">
-                            <div><h1 className="text-2xl font-bold text-green-800">Irrigation Scheduler</h1><p className="text-sm text-gray-600">Team Mode</p></div>
+                            <div><h1 className="text-2xl font-bold text-green-800">Irrigation Scheduler</h1><p className="text-sm text-gray-600">Team Mode - Live Sync</p></div>
                             <button onClick={() => setAlertsEnabled(!alertsEnabled)} className={`p-2 rounded-lg ${alertsEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
                                 {alertsEnabled ? <Bell size={20} /> : <BellOff size={20} />}
                             </button>
